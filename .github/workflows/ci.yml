@@ -1,0 +1,36 @@
+
+name: GiveMeTeam CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Получаем исходный код репозитория
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Устанавливаем .NET SDK
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Восстанавливаем зависимости
+      - name: Restore
+        run: dotnet restore backend/GiveMeTeam.sln
+
+      - name: Build
+        run: dotnet build backend/GiveMeTeam.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test backend/GiveMeTeam.sln --configuration Release --no-build --no-restore
