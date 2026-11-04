@@ -1,4 +1,10 @@
+# my instructions
 docs/db_requirements.md
 docs/web_requirements.md
 docs/TODO.md
 docs/TODO_by_Claude.md
+.env
+
+# .NET build artifacts
+**/bin/
+**/obj/
