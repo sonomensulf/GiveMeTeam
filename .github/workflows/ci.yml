@@ -27,10 +27,10 @@ jobs:
 
       # Восстанавливаем зависимости
       - name: Restore
-        run: dotnet restore backend/GiveMeTeam.sln
+        run: dotnet restore backend/GiveMeTeam.slnx
 
       - name: Build
-        run: dotnet build backend/GiveMeTeam.sln --configuration Release --no-restore
+        run: dotnet build backend/GiveMeTeam.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test backend/GiveMeTeam.sln --configuration Release --no-build --no-restore
+        run: dotnet test backend/GiveMeTeam.slnx --configuration Release --no-build --no-restore
