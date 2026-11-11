@@ -1,4 +1,4 @@
-namespace Data.Entities;
+namespace GiveMeTeam.Data.Entities;
 
 public class Message
 {
