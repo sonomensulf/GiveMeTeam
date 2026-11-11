@@ -8,3 +8,28 @@ docs/TODO_by_Claude.md
 # .NET build artifacts
 **/bin/
 **/obj/
+
+# Visual Studio / VS Code / Rider
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Tests
+TestResults/
+coverage/
+
+# Local Settings and secrets
+appsettings.Development.json
+.env
+
+# Logs
+*.log
+
+# Frontend
+node_modules/
+dist/
+
+# Windows
+Thumbs.db
