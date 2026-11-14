@@ -6,6 +6,6 @@ public class Game
     public string Code { get; set; } = null!;
     public string Name { get; set; } = null!;
 
-    public ICollection<GameMode> GameModes { get; set; } = []; // у одной игры несколько режимов
+    public ICollection<GameMode> GameModes { get; set; } = [];
     public ICollection<Announcement> Announcements { get; set; } = [];
 }
