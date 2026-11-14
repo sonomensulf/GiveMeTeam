@@ -6,8 +6,8 @@ docs/TODO_by_Claude.md
 .env
 
 # .NET build artifacts
-**/bin/
-**/obj/
+bin/
+obj/
 
 # Visual Studio / VS Code / Rider
 .vs/
