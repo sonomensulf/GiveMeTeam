@@ -69,12 +69,14 @@ public class AnnouncementConfiguration : IEntityTypeConfiguration<Announcement>
 
         // Не более одного активного объявления у автора
         builder.HasIndex(a => a.AuthorId, "uq_announcements_author_active")
+            .HasDatabaseName("uq_announcements_author_active")
             .IsUnique()
             .HasFilter("status IN ('open', 'full')");
 
         // Индекс для подсчёта объявлений автора
         // и получения списка его объявлений
-        builder.HasIndex(a => a.AuthorId, "ix_announcements_author_id");
+        builder.HasIndex(a => a.AuthorId, "ix_announcements_author_id")
+            .HasDatabaseName("ix_announcements_author_id");
         
         // Индекс для поиска объявлений
         builder.HasIndex(a => new { a.Status, a.GameId, a.CreatedAt })
