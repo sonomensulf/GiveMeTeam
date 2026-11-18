@@ -1,6 +1,23 @@
 @Api_HostAddress = http://localhost:5019
 
-GET {{Api_HostAddress}}/weatherforecast/
+### Список языков
+GET {{Api_HostAddress}}/languages
 Accept: application/json
+
+### Список игр
+GET {{Api_HostAddress}}/games
+Accept: application/json
+
+### Регистрация
+POST {{Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "nickname": "TestUser",
+  "email": "test@example.com",
+  "birth_date": "2000-05-20",
+  "password": "abc",
+  "language_ids": [7, 8]
+}
 
 ###
