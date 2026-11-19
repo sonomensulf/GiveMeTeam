@@ -16,8 +16,27 @@ Content-Type: application/json
   "nickname": "TestUser",
   "email": "test@example.com",
   "birth_date": "2000-05-20",
-  "password": "abc",
+  "password": "Passw0rd!",
   "language_ids": [7, 8]
 }
+
+### Вход
+POST {{Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{ "email": "test@example.com", "password": "Passw0rd!" }
+
+### Вход с неверным паролем (ожидается 401)
+POST {{Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{ "email": "test@example.com", "password": "wrong" }
+
+### Выход (нужна cookie из предыдущего входа)
+POST {{Api_HostAddress}}/auth/logout
+
+### Текущий пользователь
+GET {{Api_HostAddress}}/me
+Accept: application/json
 
 ###

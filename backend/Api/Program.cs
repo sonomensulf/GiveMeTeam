@@ -3,6 +3,7 @@ using GiveMeTeam.Data;
 using GiveMeTeam.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,23 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(o =>
+    {
+        o.Cookie.Name = "givemeteam.auth";
+        o.Cookie.HttpOnly = true;
+        o.Cookie.SameSite = SameSiteMode.Lax;
+        o.ExpireTimeSpan = TimeSpan.FromDays(7);
+        o.SlidingExpiration = true;
+
+        // API не должен редиректить на страницу входа, нужны 401/403
+        o.Events.OnRedirectToLogin = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
+        o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
+    });
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -27,7 +45,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapReferenceEndpoints();
 app.MapAuthEndpoints();
+app.MapUserEndpoints();
 
 app.Run();

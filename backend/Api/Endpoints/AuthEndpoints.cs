@@ -4,12 +4,17 @@ using GiveMeTeam.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 public static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this WebApplication app)
     {
         app.MapPost("/auth/register", Register);
+        app.MapPost("/auth/login", Login);
+        app.MapPost("/auth/logout", Logout).RequireAuthorization();
     }
 
     private static async Task<IResult> Register(
@@ -55,6 +60,42 @@ public static class AuthEndpoints
         return Results.Created($"/users/{user.Id}", new { id = user.Id });
     }
 
+    private static async Task<IResult> Login(
+        LoginRequest request,
+        HttpContext http,
+        AppDbContext db,
+        IPasswordHasher<User> hasher)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
+            return Error(400, "validation_error", "Укажите почту и пароль");
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null ||
+            hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password)
+                == PasswordVerificationResult.Failed)
+            return Error(401, "invalid_credentials", "Неверная почта или пароль");
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Nickname)
+        };
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+
+        await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+        return Results.Ok(new { id = user.Id, nickname = user.Nickname });
+    }
+
+    private static async Task<IResult> Logout(HttpContext http)
+    {
+        await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.NoContent();
+    }
+
     private static string? Validate(RegisterRequest r)
     {
         if (string.IsNullOrWhiteSpace(r.Nickname) || r.Nickname.Trim().Length > 50)
@@ -88,3 +129,5 @@ public record RegisterRequest(
     DateOnly? BirthDate,
     string? Password,
     List<long>? LanguageIds);
+
+public record LoginRequest(string? Email, string? Password);
