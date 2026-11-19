@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+using static ApiHelpers;
 using GiveMeTeam.Data;
 using GiveMeTeam.Data.Entities;
 using Microsoft.AspNetCore.Identity;
@@ -14,7 +14,7 @@ public static class AuthEndpoints
     {
         app.MapPost("/auth/register", Register);
         app.MapPost("/auth/login", Login);
-        app.MapPost("/auth/logout", Logout).RequireAuthorization();
+        app.MapPost("/auth/logout", (Delegate)Logout).RequireAuthorization();
     }
 
     private static async Task<IResult> Register(
@@ -101,26 +101,22 @@ public static class AuthEndpoints
         if (string.IsNullOrWhiteSpace(r.Nickname) || r.Nickname.Trim().Length > 50)
             return "Никнейм обязателен и не длиннее 50 символов";
 
-        if (string.IsNullOrWhiteSpace(r.Email) || r.Email.Length > 255
-            || !Regex.IsMatch(r.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-            || r.Email != r.Email.ToLowerInvariant())
-            return "Неверный формат почты (буквы должны быть строчными)";
+        var emailError = InputRules.EmailError(r.Email);
+        if (emailError is not null)
+            return emailError;
 
         if (r.BirthDate is null || r.BirthDate > DateOnly.FromDateTime(DateTime.UtcNow))
             return "Укажите корректную дату рождения";
 
-        if (r.Password is null || r.Password.Length < 8
-            || !r.Password.Any(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c)))
-            return "Пароль: минимум 8 символов и хотя бы один специальный символ";
+        var passwordError = InputRules.PasswordError(r.Password);
+        if (passwordError is not null)
+            return passwordError;
 
         if (r.LanguageIds is null || r.LanguageIds.Count == 0)
             return "Выберите хотя бы один язык общения";
 
         return null;
     }
-
-    private static IResult Error(int status, string code, string message) =>
-        Results.Json(new { code, message }, statusCode: status);
 }
 
 public record RegisterRequest(

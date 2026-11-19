@@ -24,7 +24,7 @@ Content-Type: application/json
 POST {{Api_HostAddress}}/auth/login
 Content-Type: application/json
 
-{ "email": "test@example.com", "password": "Passw0rd!" }
+{ "email": "new@example.com", "password": "newpass123!" }
 
 ### Вход с неверным паролем (ожидается 401)
 POST {{Api_HostAddress}}/auth/login
@@ -38,5 +38,35 @@ POST {{Api_HostAddress}}/auth/logout
 ### Текущий пользователь
 GET {{Api_HostAddress}}/me
 Accept: application/json
+
+### Смена языков и почты
+PATCH {{Api_HostAddress}}/me
+Content-Type: application/json
+
+{ "email": "new@example.com", "language_ids": [7] }
+
+### Почта с заглавными (ожидается 400)
+PATCH {{Api_HostAddress}}/me
+Content-Type: application/json
+
+{ "email": "New@Example.com" }
+
+### Дубли языков (ожидается 400)
+PATCH {{Api_HostAddress}}/me
+Content-Type: application/json
+
+{ "language_ids": [7, 7] }
+
+### Смена пароля
+PATCH {{Api_HostAddress}}/me/password
+Content-Type: application/json
+
+{ "current_password": "Passw0rd!", "new_password": "newpass123!" }
+
+### Неверный текущий пароль (ожидается 400)
+PATCH {{Api_HostAddress}}/me/password
+Content-Type: application/json
+
+{ "current_password": "wrong", "new_password": "newpass123!" }
 
 ###
