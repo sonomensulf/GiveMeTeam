@@ -13,6 +13,7 @@ public static class UserEndpoints
         app.MapGet("/me", GetMe).RequireAuthorization();
         app.MapPatch("/me", UpdateMe).RequireAuthorization();
         app.MapPatch("/me/password", ChangePassword).RequireAuthorization();
+        app.MapGet("/users/{id:long}", GetPublicProfile);
     }
 
     private static async Task<IResult> GetMe(ClaimsPrincipal principal, AppDbContext db)
@@ -128,6 +129,55 @@ public static class UserEndpoints
         await db.SaveChangesAsync();
 
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> GetPublicProfile(long id, AppDbContext db)
+    {
+        var user = await db.Users
+            .Where(u => u.Id == id)
+            .Select(u => new
+            {
+                u.Id,
+                u.Nickname,
+                u.BirthDate,
+                u.CreatedAt,
+                Languages = u.UserLanguages
+                    .Select(ul => new { id = ul.Language.Id, code = ul.Language.Code, name = ul.Language.Name })
+                    .ToList(),
+                ActiveAnnouncement = u.Announcements
+                    .Where(a => a.Status == "open" || a.Status == "full")
+                    .Select(a => new
+                    {
+                        id = a.Id,
+                        title = a.Title,
+                        game = a.Game.Name,
+                        game_mode = a.GameMode.Name,
+                        status = a.Status
+                    })
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync();
+
+        if (user is null)
+            return Error(404, "not_found", "Пользователь не найден");
+
+        return Results.Ok(new
+        {
+            id = user.Id,
+            nickname = user.Nickname,
+            age = CalculateAge(user.BirthDate),
+            created_at = user.CreatedAt,
+            languages = user.Languages,
+            active_announcement = user.ActiveAnnouncement
+        });
+    }
+
+    private static int CalculateAge(DateOnly birthDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var age = today.Year - birthDate.Year;
+        if (birthDate > today.AddYears(-age)) age--;
+        return age;
     }
 
     public record PatchMeRequest(string? Email, List<long>? LanguageIds);

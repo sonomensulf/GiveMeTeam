@@ -69,4 +69,12 @@ Content-Type: application/json
 
 { "current_password": "wrong", "new_password": "newpass123!" }
 
+### Публичный профиль (без входа)
+GET {{Api_HostAddress}}/users/1
+Accept: application/json
+
+### Несуществующий пользователь (ожидается 404)
+GET {{Api_HostAddress}}/users/99999
+Accept: application/json
+
 ###
