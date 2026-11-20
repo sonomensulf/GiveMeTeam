@@ -1,15 +1,15 @@
-@Api_HostAddress = http://localhost:5019
+@host = http://localhost:5019
 
 ### Список языков
-GET {{Api_HostAddress}}/languages
+GET {{host}}/languages
 Accept: application/json
 
 ### Список игр
-GET {{Api_HostAddress}}/games
+GET {{host}}/games
 Accept: application/json
 
 ### Регистрация
-POST {{Api_HostAddress}}/auth/register
+POST {{host}}/auth/register
 Content-Type: application/json
 
 {
@@ -20,61 +20,91 @@ Content-Type: application/json
   "language_ids": [7, 8]
 }
 
-### Вход
-POST {{Api_HostAddress}}/auth/login
+### Регистрация 2
+POST {{host}}/auth/register
 Content-Type: application/json
 
-{ "email": "new@example.com", "password": "newpass123!" }
+{
+  "nickname": "tester1",
+  "email": "tester1@example.com",
+  "birth_date": "2000-05-20",
+  "password": "Passw0rd!",
+  "language_ids": [7]
+}
+
+### Вход
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "tester1@example.com", "password": "Passw0rd!" }
 
 ### Вход с неверным паролем (ожидается 401)
-POST {{Api_HostAddress}}/auth/login
+POST {{host}}/auth/login
 Content-Type: application/json
 
 { "email": "test@example.com", "password": "wrong" }
 
 ### Выход (нужна cookie из предыдущего входа)
-POST {{Api_HostAddress}}/auth/logout
+POST {{host}}/auth/logout
 
 ### Текущий пользователь
-GET {{Api_HostAddress}}/me
+GET {{host}}/me
 Accept: application/json
 
 ### Смена языков и почты
-PATCH {{Api_HostAddress}}/me
+PATCH {{host}}/me
 Content-Type: application/json
 
 { "email": "new@example.com", "language_ids": [7] }
 
 ### Почта с заглавными (ожидается 400)
-PATCH {{Api_HostAddress}}/me
+PATCH {{host}}/me
 Content-Type: application/json
 
 { "email": "New@Example.com" }
 
 ### Дубли языков (ожидается 400)
-PATCH {{Api_HostAddress}}/me
+PATCH {{host}}/me
 Content-Type: application/json
 
 { "language_ids": [7, 7] }
 
 ### Смена пароля
-PATCH {{Api_HostAddress}}/me/password
+PATCH {{host}}/me/password
 Content-Type: application/json
 
 { "current_password": "Passw0rd!", "new_password": "newpass123!" }
 
 ### Неверный текущий пароль (ожидается 400)
-PATCH {{Api_HostAddress}}/me/password
+PATCH {{host}}/me/password
 Content-Type: application/json
 
 { "current_password": "wrong", "new_password": "newpass123!" }
 
 ### Публичный профиль (без входа)
-GET {{Api_HostAddress}}/users/1
+GET {{host}}/users/1
 Accept: application/json
 
 ### Несуществующий пользователь (ожидается 404)
-GET {{Api_HostAddress}}/users/99999
+GET {{host}}/users/99999
 Accept: application/json
+
+### Создание активного объявления (ждём 201)
+POST {{host}}/announcements
+Content-Type: application/json
+
+{
+  "game_id": 1,
+  "game_mode_id": 5,
+  "title": "Ищу команду",
+  "description": "Играем вечером",
+  "experience_level_id": 1,
+  "language_ids": [7],
+  "age_category_id": 1,
+  "max_participants": 5,
+  "status": "closed"
+}
+
+
 
 ###

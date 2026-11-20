@@ -36,6 +36,9 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<AnnouncementService>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -45,11 +48,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapReferenceEndpoints();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
+app.MapAnnouncementEndpoints();
 
 app.Run();
