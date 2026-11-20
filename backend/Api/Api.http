@@ -32,11 +32,23 @@ Content-Type: application/json
   "language_ids": [7]
 }
 
+### Регистрация 3
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "nickname": "tester2",
+  "email": "tester2@example.com",
+  "birth_date": "2000-05-20",
+  "password": "Passw0rd!",
+  "language_ids": [7]
+}
+
 ### Вход
 POST {{host}}/auth/login
 Content-Type: application/json
 
-{ "email": "tester1@example.com", "password": "Passw0rd!" }
+{ "email": "tester2@example.com", "password": "Passw0rd!" }
 
 ### Вход с неверным паролем (ожидается 401)
 POST {{host}}/auth/login
@@ -94,17 +106,39 @@ POST {{host}}/announcements
 Content-Type: application/json
 
 {
-  "game_id": 1,
+  "game_id": 2,
   "game_mode_id": 5,
-  "title": "Ищу команду",
-  "description": "Играем вечером",
-  "experience_level_id": 1,
-  "language_ids": [7],
-  "age_category_id": 1,
-  "max_participants": 5,
-  "status": "closed"
+  "title": "Чил",
+  "description": "На расслабоне",
+  "experience_level_id": 2,
+  "language_ids": [10, 11],
+  "age_category_id": 3,
+  "max_participants": 3,
+  "status": "open"
 }
 
+### Список активных объявлений (гость, без входа)
+GET {{host}}/announcements
+Accept: application/json
 
+### Фильтр по игре и языку
+GET {{host}}/announcements?game_id=1&language_id=7
+Accept: application/json
+
+### Пагинация
+GET {{host}}/announcements?page=2&page_size=5
+Accept: application/json
+
+### page=0 (ожидается 400)
+GET {{host}}/announcements?page=0
+Accept: application/json
+
+### page_size=101 (ожидается 400)
+GET {{host}}/announcements?page_size=101
+Accept: application/json
+
+### Мусор в параметре (ожидается 400)
+GET {{host}}/announcements?game_id=abc
+Accept: application/json
 
 ###

@@ -103,6 +103,94 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         }
     }
 
+    public async Task<PagedResponse<AnnouncementListItem>> ListAsync(
+        AnnouncementListFilter f, CancellationToken ct)
+    {
+        // 1) Проверка параметров пагинации
+        var page = f.Page ?? 1;
+        var pageSize = f.PageSize ?? 20;
+
+        if (page is < 1 or > 1_000_000)
+            throw new ValidationException("invalid_page", "Номер страницы должен быть не меньше 1");
+        if (pageSize is < 1 or > 100)
+            throw new ValidationException("invalid_page_size", "Размер страницы от 1 до 100");
+
+        // 2) Базовый запрос: только активные объявления
+        var query = db.Announcements
+            .AsNoTracking()
+            .Where(a => a.Status == Open || a.Status == Full);
+
+        // 3) Необязательные фильтры: добавляем условие, только если параметр пришёл
+        if (f.GameId is long gameId)
+            query = query.Where(a => a.GameId == gameId);
+        if (f.GameModeId is long modeId)
+            query = query.Where(a => a.GameModeId == modeId);
+        if (f.ExperienceLevelId is long expId)
+            query = query.Where(a => a.ExperienceLevelId == expId);
+        if (f.AgeCategoryId is long ageId)
+            query = query.Where(a => a.AgeCategoryId == ageId);
+        if (f.LanguageId is long langId)
+            query = query.Where(a => a.AnnouncementLanguages.Any(l => l.LanguageId == langId));
+
+        // 4) Общее число подходящих объявлений (для постраничной навигации)
+        var total = await query.CountAsync(ct);
+
+        // 5) Нужная страница, новые первыми
+        var rows = await query
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new
+            {
+                a.Id,
+                a.Title,
+                Preview = a.Description.Length > 200
+                    ? a.Description.Substring(0, 200)
+                    : a.Description,
+                AuthorId = a.AuthorId,
+                AuthorNickname = a.Author.Nickname,
+                AuthorBirthDate = a.Author.BirthDate,
+                GameId = a.GameId,
+                GameName = a.Game.Name,
+                ModeId = a.GameModeId,
+                ModeName = a.GameMode.Name,
+                ExpId = a.ExperienceLevelId,
+                ExpName = a.ExperienceLevel.Name,
+                AgeId = a.AgeCategoryId,
+                AgeName = a.AgeCategory.Name,
+                Languages = a.AnnouncementLanguages
+                    .Select(l => new LanguageBrief(l.Language.Id, l.Language.Code, l.Language.Name))
+                    .ToList(),
+                // автор + принятые заявки
+                Participants = a.Applications.Count(x => x.Status == "accepted") + 1,
+                a.MaxParticipants,
+                a.Status,
+                a.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        // 6) Возраст считаем в C#, превращаем строки в DTO
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        var items = rows.Select(r => new AnnouncementListItem(
+            r.Id,
+            r.Title,
+            r.Preview,
+            new AuthorBrief(r.AuthorId, r.AuthorNickname, AgeCalculator.FullYears(r.AuthorBirthDate, today)),
+            new NamedRef(r.GameId, r.GameName),
+            new NamedRef(r.ModeId, r.ModeName),
+            new NamedRef(r.ExpId, r.ExpName),
+            new NamedRef(r.AgeId, r.AgeName),
+            r.Languages,
+            r.Participants,
+            r.MaxParticipants,
+            r.Status == Full,
+            r.Status,
+            r.CreatedAt)).ToList();
+
+        return new PagedResponse<AnnouncementListItem>(items, page, pageSize, total);
+    }
+
     // Простые проверки формата. Возвращает очищенный список языков
     private static List<long> Validate(CreateAnnouncementRequest r)
     {
