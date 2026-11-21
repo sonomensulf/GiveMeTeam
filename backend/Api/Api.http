@@ -141,4 +141,20 @@ Accept: application/json
 GET {{host}}/announcements?game_id=abc
 Accept: application/json
 
+### Объявление (без входа, активное) — ожидается 200
+GET {{host}}/announcements/1
+Accept: application/json
+
+### Несуществующее — ожидается 404
+GET {{host}}/announcements/99999
+Accept: application/json
+
+### Закрытое, смотрит гость — ожидается 404
+GET {{host}}/announcements/ID_ЗАКРЫТОГО
+Accept: application/json
+
+### Мои объявления (нужен вход) — ожидается 200
+GET {{host}}/me/announcements
+Accept: application/json
+
 ###

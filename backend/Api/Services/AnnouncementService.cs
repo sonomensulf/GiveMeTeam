@@ -191,6 +191,144 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         return new PagedResponse<AnnouncementListItem>(items, page, pageSize, total);
     }
 
+    public async Task<AnnouncementDetails> GetAsync(
+        long id, long? currentUserId, CancellationToken ct)
+    {
+        // ── 1. Один запрос: объявление + автор + справочники + языки + принятые участники ──
+        var row = await db.Announcements
+            .AsNoTracking()
+            .Where(a => a.Id == id)
+            .Select(a => new
+            {
+                a.Id,
+                a.Title,
+                a.Description,
+                a.AuthorId,
+                AuthorNickname = a.Author.Nickname,
+                AuthorBirthDate = a.Author.BirthDate,
+                GameId = a.GameId,
+                GameName = a.Game.Name,
+                ModeId = a.GameModeId,
+                ModeName = a.GameMode.Name,
+                ExpId = a.ExperienceLevelId,
+                ExpName = a.ExperienceLevel.Name,
+                AgeId = a.AgeCategoryId,
+                AgeName = a.AgeCategory.Name,
+                Languages = a.AnnouncementLanguages
+                    .Select(l => new LanguageBrief(l.Language.Id, l.Language.Code, l.Language.Name))
+                    .ToList(),
+                // принятые участники (автор добавляется отдельно)
+                Accepted = a.Applications
+                    .Where(x => x.Status == "accepted")
+                    .OrderBy(x => x.Id)
+                    .Select(x => new
+                    {
+                        x.Applicant.Id,
+                        x.Applicant.Nickname,
+                        x.Applicant.BirthDate
+                    })
+                    .ToList(),
+                a.MaxParticipants,
+                a.Status,
+                a.CreatedAt,
+                a.UpdatedAt
+            })
+            .SingleOrDefaultAsync(ct);
+
+        // ── 2. Нет такого объявления, либо оно закрыто и смотрит не автор ──
+        if (row is null || (row.Status == Closed && row.AuthorId != currentUserId))
+            throw new NotFoundException("not_found", "Объявление не найдено");
+
+        // ── 3. Собираем состав группы: автор первым, затем принятые ──
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        var authorAge = AgeCalculator.FullYears(row.AuthorBirthDate, today);
+
+        var members = new List<GroupMember>
+        {
+            new(row.AuthorId, row.AuthorNickname, authorAge, true)
+        };
+        members.AddRange(row.Accepted.Select(m =>
+            new GroupMember(m.Id, m.Nickname, AgeCalculator.FullYears(m.BirthDate, today), false)));
+
+        var participants = members.Count;                       // автор + принятые
+        var freeSlots = Math.Max(0, row.MaxParticipants - participants);
+
+        return new AnnouncementDetails(
+            row.Id,
+            row.Title,
+            row.Description,
+            new AuthorBrief(row.AuthorId, row.AuthorNickname, authorAge),
+            new NamedRef(row.GameId, row.GameName),
+            new NamedRef(row.ModeId, row.ModeName),
+            new NamedRef(row.ExpId, row.ExpName),
+            new NamedRef(row.AgeId, row.AgeName),
+            row.Languages,
+            row.MaxParticipants,
+            participants,
+            freeSlots,
+            members,
+            row.Status,
+            row.CreatedAt,
+            row.UpdatedAt);
+    }
+
+    public async Task<IReadOnlyList<AnnouncementListItem>> ListMineAsync(
+        long authorId, CancellationToken ct)
+    {
+        // ── 1. Только объявления этого автора, в любых статусах ──
+        var rows = await db.Announcements
+            .AsNoTracking()
+            .Where(a => a.AuthorId == authorId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.Title,
+                Preview = a.Description.Length > 200
+                    ? a.Description.Substring(0, 200)
+                    : a.Description,
+                AuthorId = a.AuthorId,
+                AuthorNickname = a.Author.Nickname,
+                AuthorBirthDate = a.Author.BirthDate,
+                GameId = a.GameId,
+                GameName = a.Game.Name,
+                ModeId = a.GameModeId,
+                ModeName = a.GameMode.Name,
+                ExpId = a.ExperienceLevelId,
+                ExpName = a.ExperienceLevel.Name,
+                AgeId = a.AgeCategoryId,
+                AgeName = a.AgeCategory.Name,
+                Languages = a.AnnouncementLanguages
+                    .Select(l => new LanguageBrief(l.Language.Id, l.Language.Code, l.Language.Name))
+                    .ToList(),
+                // автор + принятые заявки
+                Participants = a.Applications.Count(x => x.Status == "accepted") + 1,
+                a.MaxParticipants,
+                a.Status,
+                a.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        // ── 2. Возраст считаем в C#, превращаем строки в DTO ──
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        return rows.Select(r => new AnnouncementListItem(
+            r.Id,
+            r.Title,
+            r.Preview,
+            new AuthorBrief(r.AuthorId, r.AuthorNickname, AgeCalculator.FullYears(r.AuthorBirthDate, today)),
+            new NamedRef(r.GameId, r.GameName),
+            new NamedRef(r.ModeId, r.ModeName),
+            new NamedRef(r.ExpId, r.ExpName),
+            new NamedRef(r.AgeId, r.AgeName),
+            r.Languages,
+            r.Participants,
+            r.MaxParticipants,
+            r.Status == Full,
+            r.Status,
+            r.CreatedAt)).ToList();
+    }
+
     // Простые проверки формата. Возвращает очищенный список языков
     private static List<long> Validate(CreateAnnouncementRequest r)
     {

@@ -13,3 +13,7 @@ public class ValidationException(string code, string message)
 // 409: данные корректны, но нарушено бизнес-правило
 public class ConflictException(string code, string message)
     : ApiException(StatusCodes.Status409Conflict, code, message);
+
+// 404: ресурс не найден
+public class NotFoundException(string code, string message)
+    : ApiException(StatusCodes.Status404NotFound, code, message);

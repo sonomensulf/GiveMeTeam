@@ -8,6 +8,8 @@ public static class AnnouncementEndpoints
     {
         app.MapGet("/announcements", ListAnnouncements); 
         app.MapPost("/announcements", CreateAnnouncement).RequireAuthorization();
+        app.MapGet("/announcements/{id:long}", GetAnnouncement);
+        app.MapGet("/me/announcements", ListMyAnnouncements).RequireAuthorization();
     }
 
     private static async Task<IResult> ListAnnouncements(
@@ -40,7 +42,33 @@ public static class AnnouncementEndpoints
         var result = await service.CreateAsync(authorId, request, ct);
         return Results.Created($"/announcements/{result.Id}", result);
     }
+
+    private static async Task<IResult> GetAnnouncement(
+        long id,
+        ClaimsPrincipal principal,
+        AnnouncementService service,
+        CancellationToken ct)
+    {
+        // для гостя вернётся null
+        var currentUserId = CurrentUserId(principal);
+
+        var result = await service.GetAsync(id, currentUserId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ListMyAnnouncements(
+        ClaimsPrincipal principal,
+        AnnouncementService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.ListMineAsync(userId, ct);
+        return Results.Ok(result);
+    }
 }
+
+
 
 public record CreateAnnouncementRequest(
     long GameId,
@@ -101,3 +129,23 @@ public record AnnouncementListItem(
     bool IsFull,
     string Status,
     DateTimeOffset CreatedAt);
+
+public record GroupMember(long Id, string Nickname, int Age, bool IsAuthor);
+
+public record AnnouncementDetails(
+    long Id,
+    string Title,
+    string Description,
+    AuthorBrief Author,
+    NamedRef Game,
+    NamedRef GameMode,
+    NamedRef ExperienceLevel,
+    NamedRef AgeCategory,
+    IReadOnlyList<LanguageBrief> Languages,
+    short MaxParticipants,
+    int ParticipantsCount,
+    int FreeSlots,
+    IReadOnlyList<GroupMember> Members,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
