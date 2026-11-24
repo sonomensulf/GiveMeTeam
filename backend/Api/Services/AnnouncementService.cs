@@ -103,6 +103,170 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         }
     }
 
+    public async Task<AnnouncementDetails> UpdateAsync(
+        long id, long currentUserId, UpdateAnnouncementRequest r, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // транзакция T8
+        // 1) Блокируем строку объявления
+        var a = await db.Announcements
+            .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {id} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (a is null)
+            throw new NotFoundException("not_found", "Объявление не найдено");
+
+        // 2) Только автор
+        if (a.AuthorId != currentUserId)
+            throw new ForbiddenException("forbidden", "Редактировать объявление может только автор");
+
+        // 2.1) проверки формата, не требующие блокировок
+        ValidateUpdate(r);
+
+        // 3) Итоговые значения (что пришло, иначе текущее)
+        var newGameId = r.GameId ?? a.GameId;
+        var newModeId = r.GameModeId ?? a.GameModeId;
+        var newAgeId = r.AgeCategoryId ?? a.AgeCategoryId;
+        var newExpId = r.ExperienceLevelId ?? a.ExperienceLevelId;
+
+        var currentLangIds = await db.AnnouncementLanguages
+            .Where(l => l.AnnouncementId == id)
+            .Select(l => l.LanguageId)
+            .ToListAsync(ct);
+        var newLangIds = r.LanguageIds ?? currentLangIds;
+
+        // 4) Какие «защищённые» поля реально меняются
+        var restrictedChanged =
+            newGameId != a.GameId
+            || newModeId != a.GameModeId
+            || newAgeId != a.AgeCategoryId
+            || !newLangIds.ToHashSet().SetEquals(currentLangIds);
+
+        if (restrictedChanged
+            && await db.Applications.AnyAsync(x => x.AnnouncementId == id, ct))
+            throw new ConflictException("fields_locked",
+                "Игру, режим, возрастную категорию и языки нельзя менять, если есть заявки");
+
+        // 5) Проверки существования справочников (только для изменённых значений)
+        if (newGameId != a.GameId
+            && !await db.Games.AnyAsync(g => g.Id == newGameId, ct))
+            throw new ValidationException("invalid_game", "Игра не найдена");
+
+        if ((newGameId != a.GameId || newModeId != a.GameModeId)
+            && !await db.GameModes.AnyAsync(m => m.Id == newModeId && m.GameId == newGameId, ct))
+            throw new ValidationException("invalid_game_mode",
+                "Режим не найден или не относится к выбранной игре");
+
+        if (newExpId != a.ExperienceLevelId
+            && !await db.ExperienceLevels.AnyAsync(e => e.Id == newExpId, ct))
+            throw new ValidationException("invalid_experience_level", "Уровень опыта не найден");
+
+        if (r.LanguageIds is not null)
+        {
+            var found = await db.Languages.CountAsync(l => newLangIds.Contains(l.Id), ct);
+            if (found != newLangIds.Count)
+                throw new ValidationException("invalid_languages", "Один или несколько языков не найдены");
+        }
+
+        // 6) Смена возрастной категории: возраст автора должен подходить
+        if (newAgeId != a.AgeCategoryId)
+        {
+            var minAge = await db.AgeCategories
+                .Where(c => c.Id == newAgeId)
+                .Select(c => (int?)c.MinAge)
+                .SingleOrDefaultAsync(ct);
+            if (minAge is null)
+                throw new ValidationException("invalid_age_category", "Возрастная категория не найдена");
+
+            var birthDate = await db.Users
+                .Where(u => u.Id == a.AuthorId)
+                .Select(u => u.BirthDate)
+                .SingleAsync(ct);
+            var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+            if (AgeCalculator.FullYears(birthDate, today) < minAge)
+                throw new ConflictException("age_restricted",
+                    "Ваш возраст не подходит для выбранной возрастной категории");
+        }
+
+        // 7) max_participants не меньше числа участников (автор + accepted)
+        var participants = await db.Applications
+            .CountAsync(x => x.AnnouncementId == id && x.Status == "accepted", ct) + 1;
+        var newMax = r.MaxParticipants ?? a.MaxParticipants;
+        if (newMax < participants)
+            throw new ConflictException("max_participants_too_small",
+                "Размер группы не может быть меньше текущего числа участников");
+
+        // 8) Применяем изменения
+        a.GameId = newGameId;
+        a.GameModeId = newModeId;
+        a.AgeCategoryId = newAgeId;
+        a.ExperienceLevelId = newExpId;
+        a.MaxParticipants = (short)newMax;
+        if (r.Title is not null) a.Title = r.Title.Trim();
+        if (r.Description is not null) a.Description = r.Description.Trim();
+
+        // Языки: удаляем лишние, добавляем недостающие
+        if (r.LanguageIds is not null)
+        {
+            var wanted = newLangIds.ToHashSet();
+            var rows = await db.AnnouncementLanguages
+                .Where(l => l.AnnouncementId == id)
+                .ToListAsync(ct);
+
+            db.AnnouncementLanguages.RemoveRange(rows.Where(x => !wanted.Contains(x.LanguageId)));
+
+            var have = rows.Select(x => x.LanguageId).ToHashSet();
+            foreach (var langId in wanted.Where(l => !have.Contains(l)))
+                db.AnnouncementLanguages.Add(
+                    new AnnouncementLanguage { AnnouncementId = id, LanguageId = langId });
+        }
+
+        // 9) Пересчёт full <-> open (closed не трогаем)
+        if (a.Status == Open && participants >= newMax) a.Status = Full;
+        else if (a.Status == Full && participants < newMax) a.Status = Open;
+
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        return await GetAsync(id, currentUserId, ct);
+    }
+
+    // Формат полей: проверяем только то, что пришло
+    private static void ValidateUpdate(UpdateAnnouncementRequest r)
+    {
+        if (r.GameId is null && r.GameModeId is null && r.Title is null
+            && r.Description is null && r.ExperienceLevelId is null
+            && r.LanguageIds is null && r.AgeCategoryId is null && r.MaxParticipants is null)
+            throw new ValidationException("empty_update", "Не указано ни одного поля для изменения");
+
+        if (r.Title is not null)
+        {
+            if (string.IsNullOrWhiteSpace(r.Title))
+                throw new ValidationException("invalid_title", "Заголовок не может быть пустым");
+            if (r.Title.Length > 150)
+                throw new ValidationException("invalid_title", "Заголовок не длиннее 150 символов");
+        }
+
+        if (r.Description is not null)
+        {
+            if (string.IsNullOrWhiteSpace(r.Description))
+                throw new ValidationException("invalid_description", "Описание не может быть пустым");
+            if (r.Description.Length > 2000)
+                throw new ValidationException("invalid_description", "Описание не длиннее 2000 символов");
+        }
+
+        if (r.MaxParticipants is < 2 or > 10)
+            throw new ValidationException("invalid_max_participants", "Размер группы от 2 до 10");
+
+        if (r.LanguageIds is not null)
+        {
+            if (r.LanguageIds.Count == 0)
+                throw new ValidationException("invalid_languages", "Укажите хотя бы один язык");
+            if (r.LanguageIds.Distinct().Count() != r.LanguageIds.Count)
+                throw new ValidationException("invalid_languages", "Языки не должны повторяться");
+        }
+    }
+
     public async Task<PagedResponse<AnnouncementListItem>> ListAsync(
         AnnouncementListFilter f, CancellationToken ct)
     {

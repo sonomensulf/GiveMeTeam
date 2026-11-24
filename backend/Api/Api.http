@@ -5,7 +5,7 @@ GET {{host}}/languages
 Accept: application/json
 
 ### Список игр
-GET {{host}}/games
+GET {{host}}/games/3/modes
 Accept: application/json
 
 ### Регистрация
@@ -37,18 +37,18 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
-  "nickname": "tester2",
-  "email": "tester2@example.com",
+  "nickname": "zaher",
+  "email": "zzz@yandex.ru",
   "birth_date": "2000-05-20",
-  "password": "Passw0rd!",
-  "language_ids": [7]
+  "password": "gtaaa6666!",
+  "language_ids": [7, 9]
 }
 
 ### Вход
 POST {{host}}/auth/login
 Content-Type: application/json
 
-{ "email": "tester2@example.com", "password": "Passw0rd!" }
+{ "email": "zzz@yandex.ru", "password": "gtaaa6666!" }
 
 ### Вход с неверным паролем (ожидается 401)
 POST {{host}}/auth/login
@@ -107,13 +107,13 @@ Content-Type: application/json
 
 {
   "game_id": 2,
-  "game_mode_id": 5,
-  "title": "Чил",
-  "description": "На расслабоне",
-  "experience_level_id": 2,
-  "language_ids": [10, 11],
-  "age_category_id": 3,
-  "max_participants": 3,
+  "game_mode_id": 7,
+  "title": "Поднимаю рейтинг",
+  "description": "4500+ mmr",
+  "experience_level_id": 4,
+  "language_ids": [7, 9],
+  "age_category_id": 1,
+  "max_participants": 5,
   "status": "open"
 }
 

@@ -17,3 +17,7 @@ public class ConflictException(string code, string message)
 // 404: ресурс не найден
 public class NotFoundException(string code, string message)
     : ApiException(StatusCodes.Status404NotFound, code, message);
+
+// 403: недостаточно прав
+public class ForbiddenException(string code, string message)
+    : ApiException(StatusCodes.Status403Forbidden, code, message);

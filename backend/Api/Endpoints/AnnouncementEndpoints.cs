@@ -10,6 +10,7 @@ public static class AnnouncementEndpoints
         app.MapPost("/announcements", CreateAnnouncement).RequireAuthorization();
         app.MapGet("/announcements/{id:long}", GetAnnouncement);
         app.MapGet("/me/announcements", ListMyAnnouncements).RequireAuthorization();
+        app.MapPatch("/announcements/{id:long}", UpdateAnnouncement).RequireAuthorization();
     }
 
     private static async Task<IResult> ListAnnouncements(
@@ -64,6 +65,19 @@ public static class AnnouncementEndpoints
         if (CurrentUserId(principal) is not long userId) return Unauthorized();
 
         var result = await service.ListMineAsync(userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> UpdateAnnouncement(
+        long id,
+        UpdateAnnouncementRequest request,
+        ClaimsPrincipal principal,
+        AnnouncementService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.UpdateAsync(id, userId, request, ct);
         return Results.Ok(result);
     }
 }
@@ -149,3 +163,13 @@ public record AnnouncementDetails(
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+public record UpdateAnnouncementRequest(
+    long? GameId,
+    long? GameModeId,
+    string? Title,
+    string? Description,
+    long? ExperienceLevelId,
+    List<long>? LanguageIds,
+    long? AgeCategoryId,
+    int? MaxParticipants);
