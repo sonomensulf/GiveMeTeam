@@ -492,6 +492,82 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
             r.Status,
             r.CreatedAt)).ToList();
     }
+    
+    public async Task<AnnouncementDetails> ActivateAsync(
+        long id, long currentUserId, CancellationToken ct)
+    {
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            // транзакция T3
+            // 1) Блокируем объявление
+            var a = await db.Announcements
+                .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {id} FOR UPDATE")
+                .SingleOrDefaultAsync(ct);
+            if (a is null)
+                throw new NotFoundException("not_found", "Объявление не найдено");
+
+            // 2) Только автор
+            if (a.AuthorId != currentUserId)
+                throw new ForbiddenException("forbidden", "Активировать объявление может только автор");
+
+            // 3) Блокируем автора (порядок: объявление -> пользователь)
+            var birthDate = await db.Users
+                .FromSqlInterpolated($"SELECT * FROM users WHERE id = {currentUserId} FOR UPDATE")
+                .Select(u => u.BirthDate)
+                .SingleAsync(ct);
+
+            // 4) Активировать можно только закрытое объявление
+            if (a.Status != Closed)
+                throw new ConflictException("invalid_status_transition",
+                    "Активировать можно только закрытое объявление");
+
+            // 5) Нет другого активного объявления
+            if (await db.Announcements.AnyAsync(x =>
+                    x.AuthorId == currentUserId && x.Id != id
+                    && (x.Status == Open || x.Status == Full), ct))
+                throw new ConflictException("active_announcement_exists",
+                    "У вас уже есть активное объявление");
+
+            // 6) Автор не состоит в группе (нет заявки accepted)
+            if (await db.Applications.AnyAsync(x =>
+                    x.ApplicantId == currentUserId && x.Status == "accepted", ct))
+                throw new ConflictException("already_in_group",
+                    "Вы состоите в группе и не можете активировать объявление");
+
+            // 7) Возраст автора против min_age категории
+            var minAge = await db.AgeCategories
+                .Where(c => c.Id == a.AgeCategoryId)
+                .Select(c => (int)c.MinAge)
+                .SingleAsync(ct);
+            var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+            if (AgeCalculator.FullYears(birthDate, today) < minAge)
+                throw new ConflictException("age_restricted",
+                    "Ваш возраст не подходит для выбранной возрастной категории");
+
+            // 8) Статус -> open
+            a.Status = Open;
+            await db.SaveChangesAsync(ct);
+
+            // 9) Свои pending-заявки автора -> withdrawn
+            await db.Applications
+                .Where(x => x.ApplicantId == currentUserId && x.Status == "pending")
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "withdrawn"), ct);
+
+            await tx.CommitAsync(ct);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Страховка от гонки: частичный уникальный индекс не даёт
+            // иметь два активных объявления у одного автора.
+            throw new ConflictException("active_announcement_exists",
+                "У вас уже есть активное объявление");
+        }
+
+        return await GetAsync(id, currentUserId, ct);
+    }
 
     // Простые проверки формата. Возвращает очищенный список языков
     private static List<long> Validate(CreateAnnouncementRequest r)

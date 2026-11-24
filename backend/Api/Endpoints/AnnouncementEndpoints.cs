@@ -11,6 +11,7 @@ public static class AnnouncementEndpoints
         app.MapGet("/announcements/{id:long}", GetAnnouncement);
         app.MapGet("/me/announcements", ListMyAnnouncements).RequireAuthorization();
         app.MapPatch("/announcements/{id:long}", UpdateAnnouncement).RequireAuthorization();
+        app.MapPost("/announcements/{id:long}/activate", ActivateAnnouncement).RequireAuthorization();
     }
 
     private static async Task<IResult> ListAnnouncements(
@@ -78,6 +79,18 @@ public static class AnnouncementEndpoints
         if (CurrentUserId(principal) is not long userId) return Unauthorized();
 
         var result = await service.UpdateAsync(id, userId, request, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ActivateAnnouncement(
+        long id,
+        ClaimsPrincipal principal,
+        AnnouncementService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.ActivateAsync(id, userId, ct);
         return Results.Ok(result);
     }
 }
