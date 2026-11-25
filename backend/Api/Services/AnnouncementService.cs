@@ -569,6 +569,76 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         return await GetAsync(id, currentUserId, ct);
     }
 
+    public async Task<AnnouncementDetails> CloseAsync(
+        long id, long currentUserId, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // транзакция T4
+        // 1) Блокируем объявление
+        var a = await db.Announcements
+            .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {id} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (a is null)
+            throw new NotFoundException("not_found", "Объявление не найдено");
+
+        // 2) Только автор
+        if (a.AuthorId != currentUserId)
+            throw new ForbiddenException("forbidden", "Закрыть объявление может только автор");
+
+        // 3) Закрыть можно только open или full
+        if (a.Status == Closed)
+            throw new ConflictException("invalid_status_transition",
+                "Объявление уже закрыто");
+
+        // 4) Заявки pending и accepted -> withdrawn
+        await db.Applications
+            .Where(x => x.AnnouncementId == id
+                        && (x.Status == "pending" || x.Status == "accepted"))
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "withdrawn"), ct);
+
+        // 5) Все ещё не удалённые сообщения -> deleted_at = now
+        var now = time.GetUtcNow();
+        await db.Messages
+            .Where(m => m.AnnouncementId == id && m.DeletedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.DeletedAt, now), ct);
+
+        // 6) Статус -> closed
+        a.Status = Closed;
+        await db.SaveChangesAsync(ct);
+
+        await tx.CommitAsync(ct);
+
+        return await GetAsync(id, currentUserId, ct);
+    }
+
+    public async Task DeleteAsync(long id, long currentUserId, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // 1) Блокируем объявление
+        var a = await db.Announcements
+            .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {id} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (a is null)
+            throw new NotFoundException("not_found", "Объявление не найдено");
+
+        // 2) Только автор
+        if (a.AuthorId != currentUserId)
+            throw new ForbiddenException("forbidden", "Удалить объявление может только автор");
+
+        // 3) Удалять можно только закрытое объявление
+        if (a.Status != Closed)
+            throw new ConflictException("invalid_status_transition",
+                "Удалить можно только закрытое объявление");
+
+        // 4) Удаляем; заявки, сообщения и языки удалит БД каскадом
+        db.Announcements.Remove(a);
+        await db.SaveChangesAsync(ct);
+
+        await tx.CommitAsync(ct);
+    }
+
     // Простые проверки формата. Возвращает очищенный список языков
     private static List<long> Validate(CreateAnnouncementRequest r)
     {
