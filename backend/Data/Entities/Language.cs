@@ -8,6 +8,5 @@ public class Language
 
     public string Name { get; set; } = null!;
 
-    public ICollection<UserLanguage> UserLanguages { get; set; } = [];
     public ICollection<AnnouncementLanguage> AnnouncementLanguages { get; set; } = [];
 }

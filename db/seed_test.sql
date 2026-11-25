@@ -1,29 +1,17 @@
 -- Пользователи
-INSERT INTO users (nickname, email, password_hash, birth_date) VALUES
-    ('alice', 'alice@example.com', 'PLACEHOLDER_HASH', '1998-05-10'),
-    ('bob',   'bob@example.com',   'PLACEHOLDER_HASH', '2001-03-22'),
-    ('carol', 'carol@example.com', 'PLACEHOLDER_HASH', '1999-11-02'),
-    ('dave',  'dave@example.com',  'PLACEHOLDER_HASH', '1995-07-15'),
-    ('eve',   'eve@example.com',   'PLACEHOLDER_HASH', '2003-01-30'),
-    ('frank', 'frank@example.com', 'PLACEHOLDER_HASH', '1992-09-09'),
-    ('grace', 'grace@example.com', 'PLACEHOLDER_HASH', '1997-12-12'),
-    ('heidi', 'heidi@example.com', 'PLACEHOLDER_HASH', '2002-04-18');
-
--- Языки пользователей
-INSERT INTO user_languages (user_id, language_id)
-SELECT u.id, l.id
+INSERT INTO users (nickname, email, password_hash, birth_date, country_id)
+SELECT t.nickname, t.email, 'PLACEHOLDER_HASH', t.birth_date::date, c.id
 FROM (VALUES
-    ('alice','ru'), ('alice','en'),
-    ('bob','ru'),
-    ('carol','ru'), ('carol','en'),
-    ('dave','ru'),
-    ('eve','ru'),
-    ('frank','en'),
-    ('grace','en'), ('grace','ru'),
-    ('heidi','en')
-) AS t(nickname, lang_code)
-JOIN users u ON u.nickname = t.nickname
-JOIN languages l ON l.code = t.lang_code;
+    ('alice', 'alice@example.com', '1998-05-10', 'ru'),
+    ('bob',   'bob@example.com',   '2001-03-22', 'ru'),
+    ('carol', 'carol@example.com', '1999-11-02', 'kz'),
+    ('dave',  'dave@example.com',  '1995-07-15', 'by'),
+    ('eve',   'eve@example.com',   '2003-01-30', 'ua'),
+    ('frank', 'frank@example.com', '1992-09-09', 'us'),
+    ('grace', 'grace@example.com', '1997-12-12', 'de'),
+    ('heidi', 'heidi@example.com', '2002-04-18', 'gb')
+) AS t(nickname, email, birth_date, country_code)
+JOIN countries c ON c.code = t.country_code;
 
 -- Объявления
 INSERT INTO announcements

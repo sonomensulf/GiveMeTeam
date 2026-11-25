@@ -12,9 +12,12 @@ public class User
 
     public DateOnly BirthDate { get; set; }
 
+    public long CountryId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
-    public ICollection<UserLanguage> UserLanguages { get; set; } = [];
+    public Country Country { get; set; } = null!;
+
     public ICollection<Announcement> Announcements { get; set; } = [];
     public ICollection<Application> Applications { get; set; } = [];
     public ICollection<Message> Messages { get; set; } = [];

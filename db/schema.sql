@@ -15,6 +15,14 @@ CREATE TABLE age_categories (
     CONSTRAINT ck_age_categories_name_not_empty CHECK (length(trim(name)) > 0)
 );
 
+CREATE TABLE countries (
+    id bigint GENERATED ALWAYS AS IDENTITY,
+    code character varying(10) NOT NULL,
+    name character varying(100) NOT NULL,
+    CONSTRAINT pk_countries PRIMARY KEY (id),
+    CONSTRAINT ck_countries_name_not_empty CHECK (length(trim(name)) > 0)
+);
+
 CREATE TABLE experience_levels (
     id bigint GENERATED ALWAYS AS IDENTITY,
     code character varying(20) NOT NULL,
@@ -45,11 +53,13 @@ CREATE TABLE users (
     email character varying(255) NOT NULL,
     password_hash character varying(255) NOT NULL,
     birth_date date NOT NULL,
+    country_id bigint NOT NULL,
     created_at timestamptz NOT NULL DEFAULT (now()),
     CONSTRAINT pk_users PRIMARY KEY (id),
     CONSTRAINT ck_users_birth_date_not_future CHECK (birth_date <= current_date),
     CONSTRAINT ck_users_email_lower CHECK (email = lower(email)),
-    CONSTRAINT ck_users_nickname_not_empty CHECK (length(trim(nickname)) > 0)
+    CONSTRAINT ck_users_nickname_not_empty CHECK (length(trim(nickname)) > 0),
+    CONSTRAINT fk_users_countries_country_id FOREIGN KEY (country_id) REFERENCES countries (id) ON DELETE RESTRICT
 );
 
 CREATE TABLE game_modes (
@@ -60,14 +70,6 @@ CREATE TABLE game_modes (
     CONSTRAINT uq_game_modes_game_id_id UNIQUE (game_id, id),
     CONSTRAINT ck_game_modes_name_not_empty CHECK (length(trim(name)) > 0),
     CONSTRAINT fk_game_modes_games_game_id FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE RESTRICT
-);
-
-CREATE TABLE user_languages (
-    user_id bigint NOT NULL,
-    language_id bigint NOT NULL,
-    CONSTRAINT pk_user_languages PRIMARY KEY (user_id, language_id),
-    CONSTRAINT fk_user_languages_languages_language_id FOREIGN KEY (language_id) REFERENCES languages (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_user_languages_users_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
 CREATE TABLE announcements (
@@ -159,6 +161,10 @@ CREATE UNIQUE INDEX uq_applications_announcement_applicant_active ON application
 
 CREATE UNIQUE INDEX uq_applications_applicant_accepted ON applications (applicant_id) WHERE status = 'accepted';
 
+CREATE UNIQUE INDEX uq_countries_code ON countries (code);
+
+CREATE UNIQUE INDEX uq_countries_name ON countries (name);
+
 CREATE UNIQUE INDEX uq_experience_levels_code ON experience_levels (code);
 
 CREATE UNIQUE INDEX uq_experience_levels_name ON experience_levels (name);
@@ -177,14 +183,14 @@ CREATE INDEX ix_messages_announcement_created ON messages (announcement_id, crea
 
 CREATE INDEX ix_messages_sender_id ON messages (sender_id);
 
-CREATE INDEX ix_user_languages_language_id ON user_languages (language_id);
+CREATE INDEX ix_users_country_id ON users (country_id);
 
 CREATE UNIQUE INDEX uq_users_email ON users (email);
 
 CREATE UNIQUE INDEX uq_users_nickname ON users (nickname);
 
 INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
-VALUES ('20261115114827_InitialCreate', '10.0.14');
+VALUES ('20261125120511_InitialCreate', '10.0.14');
 
 COMMIT;
 
@@ -207,7 +213,7 @@ START TRANSACTION;
             
 
 INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
-VALUES ('20261115114844_AddUpdatedAtTriggers', '10.0.14');
+VALUES ('20261125120545_AddUpdatedAtTriggers', '10.0.14');
 
 COMMIT;
 

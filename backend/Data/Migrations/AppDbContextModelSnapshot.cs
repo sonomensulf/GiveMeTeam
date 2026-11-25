@@ -252,6 +252,44 @@ namespace Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("GiveMeTeam.Data.Entities.Country", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_countries");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("uq_countries_code");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("uq_countries_name");
+
+                    b.ToTable("countries", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_countries_name_not_empty", "length(trim(name)) > 0");
+                        });
+                });
+
             modelBuilder.Entity("GiveMeTeam.Data.Entities.ExperienceLevel", b =>
                 {
                     b.Property<long>("Id")
@@ -463,6 +501,10 @@ namespace Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("birth_date");
 
+                    b.Property<long>("CountryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("country_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
@@ -490,6 +532,9 @@ namespace Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_users");
 
+                    b.HasIndex("CountryId")
+                        .HasDatabaseName("ix_users_country_id");
+
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("uq_users_email");
@@ -506,25 +551,6 @@ namespace Data.Migrations
 
                             t.HasCheckConstraint("ck_users_nickname_not_empty", "length(trim(nickname)) > 0");
                         });
-                });
-
-            modelBuilder.Entity("GiveMeTeam.Data.Entities.UserLanguage", b =>
-                {
-                    b.Property<long>("UserId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("user_id");
-
-                    b.Property<long>("LanguageId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("language_id");
-
-                    b.HasKey("UserId", "LanguageId")
-                        .HasName("pk_user_languages");
-
-                    b.HasIndex("LanguageId")
-                        .HasDatabaseName("ix_user_languages_language_id");
-
-                    b.ToTable("user_languages", (string)null);
                 });
 
             modelBuilder.Entity("GiveMeTeam.Data.Entities.Announcement", b =>
@@ -651,25 +677,16 @@ namespace Data.Migrations
                     b.Navigation("Sender");
                 });
 
-            modelBuilder.Entity("GiveMeTeam.Data.Entities.UserLanguage", b =>
+            modelBuilder.Entity("GiveMeTeam.Data.Entities.User", b =>
                 {
-                    b.HasOne("GiveMeTeam.Data.Entities.Language", "Language")
-                        .WithMany("UserLanguages")
-                        .HasForeignKey("LanguageId")
+                    b.HasOne("GiveMeTeam.Data.Entities.Country", "Country")
+                        .WithMany("Users")
+                        .HasForeignKey("CountryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_user_languages_languages_language_id");
+                        .HasConstraintName("fk_users_countries_country_id");
 
-                    b.HasOne("GiveMeTeam.Data.Entities.User", "User")
-                        .WithMany("UserLanguages")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_user_languages_users_user_id");
-
-                    b.Navigation("Language");
-
-                    b.Navigation("User");
+                    b.Navigation("Country");
                 });
 
             modelBuilder.Entity("GiveMeTeam.Data.Entities.AgeCategory", b =>
@@ -684,6 +701,11 @@ namespace Data.Migrations
                     b.Navigation("Applications");
 
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("GiveMeTeam.Data.Entities.Country", b =>
+                {
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("GiveMeTeam.Data.Entities.ExperienceLevel", b =>
@@ -706,8 +728,6 @@ namespace Data.Migrations
             modelBuilder.Entity("GiveMeTeam.Data.Entities.Language", b =>
                 {
                     b.Navigation("AnnouncementLanguages");
-
-                    b.Navigation("UserLanguages");
                 });
 
             modelBuilder.Entity("GiveMeTeam.Data.Entities.User", b =>
@@ -717,8 +737,6 @@ namespace Data.Migrations
                     b.Navigation("Applications");
 
                     b.Navigation("Messages");
-
-                    b.Navigation("UserLanguages");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,5 +1,18 @@
 ﻿START TRANSACTION;
 
+                INSERT INTO countries (code, name) VALUES
+                    ('ru', 'Россия'),
+                    ('by', 'Беларусь'),
+                    ('kz', 'Казахстан'),
+                    ('ua', 'Украина'),
+                    ('us', 'США'),
+                    ('de', 'Германия'),
+                    ('gb', 'Великобритания'),
+                    ('fr', 'Франция'),
+                    ('es', 'Испания'),
+                    ('cn', 'Китай'),
+                    ('jp', 'Япония');
+
                 INSERT INTO languages (code, name) VALUES
                     ('ru', 'Русский'),
                     ('en', 'Английский'),
@@ -70,7 +83,7 @@
             
 
 INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
-VALUES ('20261116132932_SeedReferenceData', '10.0.14');
+VALUES ('20261125120604_SeedReferenceData', '10.0.14');
 
 COMMIT;
 

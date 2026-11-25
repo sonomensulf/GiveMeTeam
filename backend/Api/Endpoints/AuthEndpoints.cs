@@ -27,11 +27,10 @@ public static class AuthEndpoints
         if (error is not null)
             return Error(400, "validation_error", error);
 
-        // 2. Проверка, что все указанные языки существуют
-        var languageIds = request.LanguageIds!.Distinct().ToList();
-        var existing = await db.Languages.CountAsync(l => languageIds.Contains(l.Id));
-        if (existing != languageIds.Count)
-            return Error(400, "validation_error", "Указан несуществующий язык");
+        // 2. Проверка, что страна существует
+        var countryId = request.CountryId!.Value;
+        if (!await db.Countries.AnyAsync(c => c.Id == countryId))
+            return Error(400, "validation_error", "Указана несуществующая страна");
 
         // 3. Создание пользователя
         var user = new User
@@ -39,13 +38,11 @@ public static class AuthEndpoints
             Nickname = request.Nickname!.Trim(),
             Email = request.Email!,
             BirthDate = request.BirthDate!.Value,
-            UserLanguages = languageIds
-                .Select(id => new UserLanguage { LanguageId = id })
-                .ToList()
+            CountryId = countryId
         };
         user.PasswordHash = hasher.HashPassword(user, request.Password!);
 
-        // 4. Сохранение (одна транзакция: пользователь + его языки)
+        // 4. Сохранение (T1: одна вставка в users, атомарна без явной транзакции)
         db.Users.Add(user);
         try
         {
@@ -112,8 +109,8 @@ public static class AuthEndpoints
         if (passwordError is not null)
             return passwordError;
 
-        if (r.LanguageIds is null || r.LanguageIds.Count == 0)
-            return "Выберите хотя бы один язык общения";
+        if (r.CountryId is null)
+            return "Выберите страну";
 
         return null;
     }
@@ -124,6 +121,6 @@ public record RegisterRequest(
     string? Email,
     DateOnly? BirthDate,
     string? Password,
-    List<long>? LanguageIds);
+    long? CountryId);
 
 public record LoginRequest(string? Email, string? Password);

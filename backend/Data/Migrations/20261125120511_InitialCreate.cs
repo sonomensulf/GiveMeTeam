@@ -30,6 +30,21 @@ namespace Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "countries",
+                columns: table => new
+                {
+                    id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityAlwaysColumn),
+                    code = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
+                    name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_countries", x => x.id);
+                    table.CheckConstraint("ck_countries_name_not_empty", "length(trim(name)) > 0");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "experience_levels",
                 columns: table => new
                 {
@@ -84,6 +99,7 @@ namespace Data.Migrations
                     email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     password_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     birth_date = table.Column<DateOnly>(type: "date", nullable: false),
+                    country_id = table.Column<long>(type: "bigint", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false, defaultValueSql: "now()")
                 },
                 constraints: table =>
@@ -92,6 +108,12 @@ namespace Data.Migrations
                     table.CheckConstraint("ck_users_birth_date_not_future", "birth_date <= current_date");
                     table.CheckConstraint("ck_users_email_lower", "email = lower(email)");
                     table.CheckConstraint("ck_users_nickname_not_empty", "length(trim(nickname)) > 0");
+                    table.ForeignKey(
+                        name: "fk_users_countries_country_id",
+                        column: x => x.country_id,
+                        principalTable: "countries",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -114,30 +136,6 @@ namespace Data.Migrations
                         principalTable: "games",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "user_languages",
-                columns: table => new
-                {
-                    user_id = table.Column<long>(type: "bigint", nullable: false),
-                    language_id = table.Column<long>(type: "bigint", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_user_languages", x => new { x.user_id, x.language_id });
-                    table.ForeignKey(
-                        name: "fk_user_languages_languages_language_id",
-                        column: x => x.language_id,
-                        principalTable: "languages",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "fk_user_languages_users_user_id",
-                        column: x => x.user_id,
-                        principalTable: "users",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -359,6 +357,18 @@ namespace Data.Migrations
                 filter: "status = 'accepted'");
 
             migrationBuilder.CreateIndex(
+                name: "uq_countries_code",
+                table: "countries",
+                column: "code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "uq_countries_name",
+                table: "countries",
+                column: "name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "uq_experience_levels_code",
                 table: "experience_levels",
                 column: "code",
@@ -411,9 +421,9 @@ namespace Data.Migrations
                 column: "sender_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_user_languages_language_id",
-                table: "user_languages",
-                column: "language_id");
+                name: "ix_users_country_id",
+                table: "users",
+                column: "country_id");
 
             migrationBuilder.CreateIndex(
                 name: "uq_users_email",
@@ -441,13 +451,10 @@ namespace Data.Migrations
                 name: "messages");
 
             migrationBuilder.DropTable(
-                name: "user_languages");
+                name: "languages");
 
             migrationBuilder.DropTable(
                 name: "announcements");
-
-            migrationBuilder.DropTable(
-                name: "languages");
 
             migrationBuilder.DropTable(
                 name: "age_categories");
@@ -463,6 +470,9 @@ namespace Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "games");
+
+            migrationBuilder.DropTable(
+                name: "countries");
         }
     }
 }

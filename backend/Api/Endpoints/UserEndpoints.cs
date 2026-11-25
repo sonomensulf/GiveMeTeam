@@ -30,9 +30,7 @@ public static class UserEndpoints
                 email = u.Email,
                 birth_date = u.BirthDate,
                 created_at = u.CreatedAt,
-                languages = u.UserLanguages
-                    .Select(ul => new { id = ul.Language.Id, code = ul.Language.Code, name = ul.Language.Name })
-                    .ToList()
+                country = new { id = u.Country.Id, code = u.Country.Code, name = u.Country.Name }
             })
             .FirstOrDefaultAsync();
 
@@ -47,8 +45,8 @@ public static class UserEndpoints
     {
         if (CurrentUserId(principal) is not long userId) return Unauthorized();
 
-        if (request.Email is null && request.LanguageIds is null)
-            return Error(400, "validation_error", "Укажите email или языки общения");
+        if (request.Email is null && request.CountryId is null)
+            return Error(400, "validation_error", "Укажите email или страну");
 
         if (request.Email is not null)
         {
@@ -56,40 +54,18 @@ public static class UserEndpoints
             if (emailError is not null) return Error(400, "validation_error", emailError);
         }
 
-        if (request.LanguageIds is not null)
-        {
-            var ids = request.LanguageIds;
-            if (ids.Count == 0)
-                return Error(400, "validation_error", "Выберите хотя бы один язык общения");
-            if (ids.Distinct().Count() != ids.Count)
-                return Error(400, "validation_error", "Языки не должны повторяться");
+        if (request.CountryId is long countryId
+            && !await db.Countries.AnyAsync(c => c.Id == countryId))
+            return Error(400, "validation_error", "Указана несуществующая страна");
 
-            var existing = await db.Languages.CountAsync(l => ids.Contains(l.Id));
-            if (existing != ids.Count)
-                return Error(400, "validation_error", "Указан несуществующий язык");
-        }
-
-        var user = await db.Users
-            .Include(u => u.UserLanguages)
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user is null) return Unauthorized();
 
         if (request.Email is not null)
             user.Email = request.Email;
 
-        if (request.LanguageIds is not null)
-        {
-            var newIds = request.LanguageIds.ToHashSet();
-
-            // удаляем только лишние и добавляем только недостающие,
-            // чтобы EF не пытался удалить и вставить одну и ту же пару
-            foreach (var ul in user.UserLanguages.Where(x => !newIds.Contains(x.LanguageId)).ToList())
-                user.UserLanguages.Remove(ul);
-
-            var have = user.UserLanguages.Select(x => x.LanguageId).ToHashSet();
-            foreach (var id in newIds.Where(id => !have.Contains(id)))
-                user.UserLanguages.Add(new UserLanguage { LanguageId = id });
-        }
+        if (request.CountryId is not null)
+            user.CountryId = request.CountryId.Value;
 
         try
         {
@@ -141,9 +117,7 @@ public static class UserEndpoints
                 u.Nickname,
                 u.BirthDate,
                 u.CreatedAt,
-                Languages = u.UserLanguages
-                    .Select(ul => new { id = ul.Language.Id, code = ul.Language.Code, name = ul.Language.Name })
-                    .ToList(),
+                Country = new { id = u.Country.Id, code = u.Country.Code, name = u.Country.Name },
                 ActiveAnnouncement = u.Announcements
                     .Where(a => a.Status == "open" || a.Status == "full")
                     .Select(a => new
@@ -167,7 +141,7 @@ public static class UserEndpoints
             nickname = user.Nickname,
             age = CalculateAge(user.BirthDate),
             created_at = user.CreatedAt,
-            languages = user.Languages,
+            country = user.Country,
             active_announcement = user.ActiveAnnouncement
         });
     }
@@ -180,6 +154,6 @@ public static class UserEndpoints
         return age;
     }
 
-    public record PatchMeRequest(string? Email, List<long>? LanguageIds);
+    public record PatchMeRequest(string? Email, long? CountryId);
     public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
 }

@@ -11,6 +11,19 @@ namespace Data.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(@"
+                INSERT INTO countries (code, name) VALUES
+                    ('ru', 'Россия'),
+                    ('by', 'Беларусь'),
+                    ('kz', 'Казахстан'),
+                    ('ua', 'Украина'),
+                    ('us', 'США'),
+                    ('de', 'Германия'),
+                    ('gb', 'Великобритания'),
+                    ('fr', 'Франция'),
+                    ('es', 'Испания'),
+                    ('cn', 'Китай'),
+                    ('jp', 'Япония');
+
                 INSERT INTO languages (code, name) VALUES
                     ('ru', 'Русский'),
                     ('en', 'Английский'),
@@ -80,6 +93,7 @@ namespace Data.Migrations
                     ('30plus', '30+', 30);
             ");
         }
+
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
@@ -87,6 +101,7 @@ namespace Data.Migrations
                 DELETE FROM game_modes;
                 DELETE FROM games;
                 DELETE FROM languages;
+                DELETE FROM countries;
                 DELETE FROM experience_levels;
                 DELETE FROM age_categories;
             ");

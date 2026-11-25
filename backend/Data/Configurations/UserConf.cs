@@ -22,11 +22,17 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Email).HasMaxLength(255).IsRequired();
         builder.Property(u => u.PasswordHash).HasMaxLength(255).IsRequired();
         builder.Property(u => u.BirthDate).HasColumnType("date").IsRequired();
+        builder.Property(u => u.CountryId).IsRequired();
         builder.Property(u => u.CreatedAt)
             .HasColumnType("timestamptz")
             .HasDefaultValueSql("now()");
 
         builder.HasIndex(u => u.Nickname).IsUnique().HasDatabaseName("uq_users_nickname");
         builder.HasIndex(u => u.Email).IsUnique().HasDatabaseName("uq_users_email");
+
+        builder.HasOne(u => u.Country)
+            .WithMany(c => c.Users)
+            .HasForeignKey(u => u.CountryId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

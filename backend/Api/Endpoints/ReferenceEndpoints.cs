@@ -16,6 +16,17 @@ public static class ReferenceEndpoints
             return Results.Ok(languages);
         });
 
+        app.MapGet("/countries", async (AppDbContext db) =>
+        {
+            var countries = await db.Countries
+                .AsNoTracking()
+                .OrderBy(c => c.Id)
+                .Select(c => new CountryDto(c.Id, c.Code, c.Name))
+                .ToListAsync();
+
+            return Results.Ok(countries);
+        });
+
         app.MapGet("/games", async (AppDbContext db) =>
         {
             var games = await db.Games
@@ -73,6 +84,7 @@ public static class ReferenceEndpoints
 }
 
 public record LanguageDto(long Id, string Code, string Name);
+public record CountryDto(long Id, string Code, string Name);
 public record GameDto(long Id, string Code, string Name);
 public record GameModeDto(long Id, string Name);
 public record ExperienceLevelDto(long Id, string Code, string Name);

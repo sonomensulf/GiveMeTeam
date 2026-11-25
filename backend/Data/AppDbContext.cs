@@ -16,12 +16,12 @@ public class AppDbContext : DbContext
 
     // справочники
     public DbSet<Language> Languages => Set<Language>();
+    public DbSet<Country> Countries => Set<Country>();
     public DbSet<GameMode> GameModes => Set<GameMode>();
     public DbSet<ExperienceLevel> ExperienceLevels => Set<ExperienceLevel>();
     public DbSet<AgeCategory> AgeCategories => Set<AgeCategory>();
 
     // связующие
-    public DbSet<UserLanguage> UserLanguages => Set<UserLanguage>();
     public DbSet<AnnouncementLanguage> AnnouncementLanguages => Set<AnnouncementLanguage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
