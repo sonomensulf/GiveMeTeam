@@ -24,4 +24,12 @@ public static class AnnouncementStatus
 
     // Активное объявление: open или full
     public static bool IsActive(string status) => status is Open or Full;
+
+    // Какой статус должен быть у активного объявления при таком числе участников.
+    public static string Recalculate(string current, int participants, int maxParticipants)
+    {
+        if (current == Open && participants >= maxParticipants) return Full;
+        if (current == Full && participants < maxParticipants) return Open;
+        return current;
+    }
 }

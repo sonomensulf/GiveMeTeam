@@ -224,10 +224,7 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         }
 
         // 9) Пересчёт full <-> open (closed не трогаем)
-        var targetStatus = a.Status;
-        if (a.Status == Open && participants >= newMax) targetStatus = Full;
-        else if (a.Status == Full && participants < newMax) targetStatus = Open;
-
+        var targetStatus = AnnouncementStatus.Recalculate(a.Status, participants, newMax);
         if (targetStatus != a.Status)
         {
             AnnouncementStatus.EnsureTransition(a.Status, targetStatus);
