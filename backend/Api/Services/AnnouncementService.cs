@@ -6,7 +6,9 @@ using Npgsql;
 public class AnnouncementService(AppDbContext db, TimeProvider time)
 {
     private const int MaxAnnouncementsPerAuthor = 10;
-    private const string Open = "open", Full = "full", Closed = "closed";
+    private const string Open = AnnouncementStatus.Open,
+                     Full = AnnouncementStatus.Full,
+                     Closed = AnnouncementStatus.Closed;
 
     public async Task<AnnouncementResponse> CreateAsync(
         long authorId, CreateAnnouncementRequest r, CancellationToken ct)
@@ -222,8 +224,15 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         }
 
         // 9) Пересчёт full <-> open (closed не трогаем)
-        if (a.Status == Open && participants >= newMax) a.Status = Full;
-        else if (a.Status == Full && participants < newMax) a.Status = Open;
+        var targetStatus = a.Status;
+        if (a.Status == Open && participants >= newMax) targetStatus = Full;
+        else if (a.Status == Full && participants < newMax) targetStatus = Open;
+
+        if (targetStatus != a.Status)
+        {
+            AnnouncementStatus.EnsureTransition(a.Status, targetStatus);
+            a.Status = targetStatus;
+        }
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -586,10 +595,8 @@ public class AnnouncementService(AppDbContext db, TimeProvider time)
         if (a.AuthorId != currentUserId)
             throw new ForbiddenException("forbidden", "Закрыть объявление может только автор");
 
-        // 3) Закрыть можно только open или full
-        if (a.Status == Closed)
-            throw new ConflictException("invalid_status_transition",
-                "Объявление уже закрыто");
+        // 3) Переход в closed должен быть разрешён таблицей (из open или full)
+        AnnouncementStatus.EnsureTransition(a.Status, Closed);
 
         // 4) Заявки pending и accepted -> withdrawn
         await db.Applications
