@@ -38,6 +38,7 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AnnouncementService>();
+builder.Services.AddScoped<ApplicationService>();
 
 var app = builder.Build();
 
@@ -58,5 +59,6 @@ app.MapReferenceEndpoints();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapAnnouncementEndpoints();
+app.MapApplicationEndpoints();
 
 app.Run();
