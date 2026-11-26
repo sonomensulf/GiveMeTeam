@@ -1130,7 +1130,7 @@
           </tr>
           <tr>
             <td>GET</td>
-            <td>/me/applications/incoming</td>
+            <td>/me/announcements/applications</td>
             <td>Входящие заявки по всем собственным объявлениям</td>
             <td>Пользователь</td>
           </tr>

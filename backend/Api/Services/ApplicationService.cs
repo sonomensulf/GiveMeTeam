@@ -113,4 +113,72 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
                 "Вы уже подали заявку на это объявление");
         }
     }
+
+        public async Task<IReadOnlyList<MyApplicationItem>> ListMineAsync(
+            long applicantId, CancellationToken ct)
+        {
+            // ── Только заявки этого пользователя, в любых статусах, новые первыми ──
+            var rows = await db.Applications
+                .AsNoTracking()
+                .Where(a => a.ApplicantId == applicantId)
+                .OrderByDescending(a => a.CreatedAt)
+                .ThenByDescending(a => a.Id)
+                .Select(a => new MyApplicationItem(
+                    a.Id,
+                    a.Status,
+                    a.CreatedAt,
+                    a.UpdatedAt,
+                    new ApplicationAnnouncementBrief(
+                        a.Announcement.Id,
+                        a.Announcement.Title,
+                        a.Announcement.Status,
+                        a.Announcement.AuthorId,
+                        a.Announcement.Author.Nickname,
+                        new NamedRef(a.Announcement.Game.Id, a.Announcement.Game.Name),
+                        new NamedRef(a.Announcement.GameMode.Id, a.Announcement.GameMode.Name))))
+                .ToListAsync(ct);
+
+            return rows;
+        }
+
+        public async Task<IReadOnlyList<IncomingApplicationItem>> ListIncomingAsync(
+            long authorId, CancellationToken ct)
+        {
+            // ── Заявки на объявления этого автора, в любых статусах, новые первыми ──
+            var rows = await db.Applications
+                .AsNoTracking()
+                .Where(a => a.Announcement.AuthorId == authorId)
+                .OrderByDescending(a => a.CreatedAt)
+                .ThenByDescending(a => a.Id)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.Status,
+                    a.CreatedAt,
+                    a.UpdatedAt,
+                    AnnouncementId = a.Announcement.Id,
+                    AnnouncementTitle = a.Announcement.Title,
+                    AnnouncementStatus = a.Announcement.Status,
+                    ApplicantId = a.Applicant.Id,
+                    ApplicantNickname = a.Applicant.Nickname,
+                    ApplicantBirthDate = a.Applicant.BirthDate
+                })
+                .ToListAsync(ct);
+
+            // ── Возраст считаем в C#, превращаем строки в DTO ──
+            var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+            return rows.Select(r => new IncomingApplicationItem(
+                r.Id,
+                r.Status,
+                r.CreatedAt,
+                r.UpdatedAt,
+                new ApplicantBrief(
+                    r.ApplicantId,
+                    r.ApplicantNickname,
+                    AgeCalculator.FullYears(r.ApplicantBirthDate, today)),
+                new IncomingAnnouncementBrief(
+                    r.AnnouncementId,
+                    r.AnnouncementTitle,
+                    r.AnnouncementStatus))).ToList();
+        }
 }
