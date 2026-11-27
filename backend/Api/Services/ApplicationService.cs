@@ -6,6 +6,10 @@ using Npgsql;
 public class ApplicationService(AppDbContext db, TimeProvider time)
 {
     private const int MaxPendingApplications = 5;
+    private const string Pending = ApplicationStatus.Pending,
+                         Accepted = ApplicationStatus.Accepted,
+                         Rejected = ApplicationStatus.Rejected,
+                         Withdrawn = ApplicationStatus.Withdrawn;
 
     public async Task<ApplicationResponse> CreateAsync(
         long announcementId, long applicantId, CancellationToken ct)
@@ -55,7 +59,7 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
 
             // 6) Заявитель не состоит в группе (нет заявки accepted)
             if (await db.Applications.AnyAsync(x =>
-                    x.ApplicantId == applicantId && x.Status == "accepted", ct))
+                    x.ApplicantId == applicantId && x.Status == Accepted, ct))
                 throw new ConflictException("already_in_group",
                     "Вы состоите в группе и не можете подавать заявки");
 
@@ -70,20 +74,20 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
             //    После withdrawn повторная подача разрешена
             if (await db.Applications.AnyAsync(x =>
                     x.AnnouncementId == announcementId && x.ApplicantId == applicantId
-                    && x.Status == "rejected", ct))
+                    && x.Status == Rejected, ct))
                 throw new ConflictException("application_rejected",
                     "Ваша заявка на это объявление была отклонена, повторная подача запрещена");
 
             // 9) Нет активной (pending/accepted) заявки на это объявление
             if (await db.Applications.AnyAsync(x =>
                     x.AnnouncementId == announcementId && x.ApplicantId == applicantId
-                    && (x.Status == "pending" || x.Status == "accepted"), ct))
+                    && (x.Status == Pending || x.Status == Accepted), ct))
                 throw new ConflictException("application_exists",
                     "Вы уже подали заявку на это объявление");
 
             // 10) Не более 5 заявок pending
             var pending = await db.Applications.CountAsync(x =>
-                x.ApplicantId == applicantId && x.Status == "pending", ct);
+                x.ApplicantId == applicantId && x.Status == Pending, ct);
             if (pending >= MaxPendingApplications)
                 throw new ConflictException("pending_limit",
                     "Нельзя иметь более 5 заявок в ожидании");
@@ -93,7 +97,7 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
             {
                 AnnouncementId = announcementId,
                 ApplicantId = applicantId,
-                Status = "pending"
+                Status = Pending
             };
             db.Applications.Add(entity);
             await db.SaveChangesAsync(ct);
@@ -234,5 +238,225 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
                 r.AnnouncementId,
                 r.AnnouncementTitle,
                 r.AnnouncementStatus))).ToList();
+    }
+
+    public async Task<ApplicationResponse> AcceptAsync(
+        long applicationId, long currentUserId, CancellationToken ct)
+    {
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            // транзакция T6
+            // 0) Узнаём, к какому объявлению относится заявка (без блокировки).
+            //    Нужно только для того, чтобы первым заблокировать объявление
+            var announcementId = await db.Applications
+                .AsNoTracking()
+                .Where(x => x.Id == applicationId)
+                .Select(x => (long?)x.AnnouncementId)
+                .SingleOrDefaultAsync(ct);
+            if (announcementId is null)
+                throw new NotFoundException("not_found", "Заявка не найдена");
+
+            // 1) Блокируем объявление (порядок: объявление -> пользователь -> заявки)
+            var a = await db.Announcements
+                .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {announcementId} FOR UPDATE")
+                .SingleOrDefaultAsync(ct);
+            if (a is null)
+                throw new NotFoundException("not_found", "Заявка не найдена");
+
+            // 2) Только автор объявления
+            if (a.AuthorId != currentUserId)
+                throw new ForbiddenException("forbidden", "Принимать заявки может только автор объявления");
+
+            // 3) Перечитываем заявку уже под блокировкой: за время ожидания
+            //    её могли отозвать, отклонить или удалить вместе с объявлением
+            var app = await db.Applications.SingleOrDefaultAsync(x => x.Id == applicationId, ct);
+            if (app is null)
+                throw new NotFoundException("not_found", "Заявка не найдена");
+
+            // 4) Принять можно только заявку в статусе pending
+            ApplicationStatus.EnsureTransition(app.Status, Accepted);
+
+            // 5) Объявление должно быть в статусе open
+            if (a.Status != AnnouncementStatus.Open)
+                throw new ConflictException("announcement_not_open",
+                    "Заявки принимаются только в объявлении со статусом open");
+
+            // 6) Есть свободное место (автор + принятые < max_participants)
+            var participants = await db.Applications
+                .CountAsync(x => x.AnnouncementId == a.Id && x.Status == Accepted, ct) + 1;
+            if (participants >= a.MaxParticipants)
+                throw new ConflictException("group_full", "В группе нет свободных мест");
+
+            // 7) Блокируем заявителя (порядок: объявление -> пользователь)
+            await db.Users
+                .FromSqlInterpolated($"SELECT * FROM users WHERE id = {app.ApplicantId} FOR UPDATE")
+                .Select(u => u.Id)
+                .SingleAsync(ct);
+
+            // 8) У заявителя нет заявки accepted (он не состоит в другой группе)
+            if (await db.Applications.AnyAsync(x =>
+                    x.ApplicantId == app.ApplicantId && x.Status == Accepted, ct))
+                throw new ConflictException("already_in_group",
+                    "Пользователь уже состоит в другой группе");
+
+            // 9) У заявителя нет собственного активного объявления
+            if (await db.Announcements.AnyAsync(x =>
+                    x.AuthorId == app.ApplicantId
+                    && (x.Status == AnnouncementStatus.Open || x.Status == AnnouncementStatus.Full), ct))
+                throw new ConflictException("active_announcement_exists",
+                    "У пользователя есть активное объявление");
+
+            // 10) Заявка -> accepted
+            app.Status = Accepted;
+            await db.SaveChangesAsync(ct);
+
+            // 11) Остальные pending-заявки заявителя -> withdrawn
+            await db.Applications
+                .Where(x => x.ApplicantId == app.ApplicantId
+                            && 	x.Status == Pending && x.Id != applicationId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, Withdrawn), ct);
+
+            // 12) Если группа набрана, объявление -> full
+            var targetStatus = AnnouncementStatus.Recalculate(a.Status, participants + 1, a.MaxParticipants);
+            if (targetStatus != a.Status)
+            {
+                AnnouncementStatus.EnsureTransition(a.Status, targetStatus);
+                a.Status = targetStatus;
+                await db.SaveChangesAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+
+            return new ApplicationResponse(
+                app.Id, app.AnnouncementId, app.ApplicantId, app.Status, app.CreatedAt);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Страховка от гонки: частичный уникальный индекс
+            // uq_applications_applicant_accepted не даёт иметь две заявки accepted
+            throw new ConflictException("already_in_group",
+                "Пользователь уже состоит в другой группе");
+        }
+    }
+
+    public async Task<ApplicationResponse> RejectAsync(
+        long applicationId, long currentUserId, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // транзакция T7 (отклонение заявки / исключение участника)
+        // 0) Узнаём объявление заявки (без блокировки), чтобы заблокировать его первым
+        var announcementId = await db.Applications
+            .AsNoTracking()
+            .Where(x => x.Id == applicationId)
+            .Select(x => (long?)x.AnnouncementId)
+            .SingleOrDefaultAsync(ct);
+        if (announcementId is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 1) Блокируем объявление
+        var a = await db.Announcements
+            .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {announcementId} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (a is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 2) Только автор объявления
+        if (a.AuthorId != currentUserId)
+            throw new ForbiddenException("forbidden", "Отклонять заявки может только автор объявления");
+
+        // 3) Перечитываем заявку под блокировкой
+        var app = await db.Applications.SingleOrDefaultAsync(x => x.Id == applicationId, ct);
+        if (app is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 4) Переход pending/accepted -> rejected должен быть разрешён таблицей
+        ApplicationStatus.EnsureTransition(app.Status, Rejected);
+
+        // 5) Заявка -> rejected
+        var wasAccepted = app.Status == Accepted;
+        app.Status = Rejected;
+        await db.SaveChangesAsync(ct);
+
+        // 6) Если исключили участника и объявление было full, место освободилось -> open
+        if (wasAccepted)
+        {
+            var participants = await db.Applications
+                .CountAsync(x => x.AnnouncementId == a.Id && x.Status == Accepted, ct) + 1;
+            var targetStatus = AnnouncementStatus.Recalculate(a.Status, participants, a.MaxParticipants);
+            if (targetStatus != a.Status)
+            {
+                AnnouncementStatus.EnsureTransition(a.Status, targetStatus);
+                a.Status = targetStatus;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        await tx.CommitAsync(ct);
+
+        return new ApplicationResponse(
+            app.Id, app.AnnouncementId, app.ApplicantId, app.Status, app.CreatedAt);
+    }
+
+    public async Task<ApplicationResponse> WithdrawAsync(
+        long applicationId, long currentUserId, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // транзакция T7 (отзыв заявки / выход из группы)
+        // 0) Узнаём объявление заявки (без блокировки), чтобы заблокировать его первым
+        var announcementId = await db.Applications
+            .AsNoTracking()
+            .Where(x => x.Id == applicationId)
+            .Select(x => (long?)x.AnnouncementId)
+            .SingleOrDefaultAsync(ct);
+        if (announcementId is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 1) Блокируем объявление
+        var a = await db.Announcements
+            .FromSqlInterpolated($"SELECT * FROM announcements WHERE id = {announcementId} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (a is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 2) Перечитываем заявку под блокировкой
+        var app = await db.Applications.SingleOrDefaultAsync(x => x.Id == applicationId, ct);
+        if (app is null)
+            throw new NotFoundException("not_found", "Заявка не найдена");
+
+        // 3) Только заявитель
+        if (app.ApplicantId != currentUserId)
+            throw new ForbiddenException("forbidden", "Отозвать заявку может только заявитель");
+
+        // 4) Переход pending/accepted -> withdrawn должен быть разрешён таблицей
+        ApplicationStatus.EnsureTransition(app.Status, Withdrawn);
+
+        // 5) Заявка -> withdrawn
+        var wasAccepted = app.Status == Accepted;
+        app.Status = Withdrawn;
+        await db.SaveChangesAsync(ct);
+
+        // 6) Если вышел участник и объявление было full, место освободилось -> open
+        if (wasAccepted)
+        {
+            var participants = await db.Applications
+                .CountAsync(x => x.AnnouncementId == a.Id && x.Status == Accepted, ct) + 1;
+            var targetStatus = AnnouncementStatus.Recalculate(a.Status, participants, a.MaxParticipants);
+            if (targetStatus != a.Status)
+            {
+                AnnouncementStatus.EnsureTransition(a.Status, targetStatus);
+                a.Status = targetStatus;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        await tx.CommitAsync(ct);
+
+        return new ApplicationResponse(
+            app.Id, app.AnnouncementId, app.ApplicantId, app.Status, app.CreatedAt);
     }
 }

@@ -9,6 +9,9 @@ public static class ApplicationEndpoints
         app.MapGet("/announcements/{id:long}/applications", ListAnnouncementApplications).RequireAuthorization();
         app.MapGet("/me/applications", ListMyApplications).RequireAuthorization();
         app.MapGet("/me/announcements/applications", ListIncomingApplications).RequireAuthorization();
+        app.MapPost("/applications/{id:long}/accept", AcceptApplication).RequireAuthorization();
+        app.MapPost("/applications/{id:long}/reject", RejectApplication).RequireAuthorization();
+        app.MapPost("/applications/{id:long}/withdraw", WithdrawApplication).RequireAuthorization();
     }
 
     private static async Task<IResult> CreateApplication(
@@ -55,6 +58,42 @@ public static class ApplicationEndpoints
         if (CurrentUserId(principal) is not long userId) return Unauthorized();
 
         var result = await service.ListForAnnouncementAsync(id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> AcceptApplication(
+        long id,
+        ClaimsPrincipal principal,
+        ApplicationService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.AcceptAsync(id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> RejectApplication(
+        long id,
+        ClaimsPrincipal principal,
+        ApplicationService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.RejectAsync(id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> WithdrawApplication(
+        long id,
+        ClaimsPrincipal principal,
+        ApplicationService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.WithdrawAsync(id, userId, ct);
         return Results.Ok(result);
     }
 }
