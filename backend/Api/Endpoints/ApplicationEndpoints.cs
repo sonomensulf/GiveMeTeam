@@ -6,6 +6,7 @@ public static class ApplicationEndpoints
     public static void MapApplicationEndpoints(this WebApplication app)
     {
         app.MapPost("/announcements/{id:long}/applications", CreateApplication).RequireAuthorization();
+        app.MapGet("/announcements/{id:long}/applications", ListAnnouncementApplications).RequireAuthorization();
         app.MapGet("/me/applications", ListMyApplications).RequireAuthorization();
         app.MapGet("/me/announcements/applications", ListIncomingApplications).RequireAuthorization();
     }
@@ -42,6 +43,18 @@ public static class ApplicationEndpoints
         if (CurrentUserId(principal) is not long userId) return Unauthorized();
 
         var result = await service.ListIncomingAsync(userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ListAnnouncementApplications(
+        long id,
+        ClaimsPrincipal principal,
+        ApplicationService service,
+        CancellationToken ct)
+    {
+        if (CurrentUserId(principal) is not long userId) return Unauthorized();
+
+        var result = await service.ListForAnnouncementAsync(id, userId, ct);
         return Results.Ok(result);
     }
 }

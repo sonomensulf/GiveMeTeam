@@ -114,71 +114,125 @@ public class ApplicationService(AppDbContext db, TimeProvider time)
         }
     }
 
-        public async Task<IReadOnlyList<MyApplicationItem>> ListMineAsync(
-            long applicantId, CancellationToken ct)
-        {
-            // ── Только заявки этого пользователя, в любых статусах, новые первыми ──
-            var rows = await db.Applications
-                .AsNoTracking()
-                .Where(a => a.ApplicantId == applicantId)
-                .OrderByDescending(a => a.CreatedAt)
-                .ThenByDescending(a => a.Id)
-                .Select(a => new MyApplicationItem(
-                    a.Id,
-                    a.Status,
-                    a.CreatedAt,
-                    a.UpdatedAt,
-                    new ApplicationAnnouncementBrief(
-                        a.Announcement.Id,
-                        a.Announcement.Title,
-                        a.Announcement.Status,
-                        a.Announcement.AuthorId,
-                        a.Announcement.Author.Nickname,
-                        new NamedRef(a.Announcement.Game.Id, a.Announcement.Game.Name),
-                        new NamedRef(a.Announcement.GameMode.Id, a.Announcement.GameMode.Name))))
-                .ToListAsync(ct);
+    public async Task<IReadOnlyList<MyApplicationItem>> ListMineAsync(
+        long applicantId, CancellationToken ct)
+    {
+        // ── Только заявки этого пользователя, в любых статусах, новые первыми ──
+        var rows = await db.Applications
+            .AsNoTracking()
+            .Where(a => a.ApplicantId == applicantId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => new MyApplicationItem(
+                a.Id,
+                a.Status,
+                a.CreatedAt,
+                a.UpdatedAt,
+                new ApplicationAnnouncementBrief(
+                    a.Announcement.Id,
+                    a.Announcement.Title,
+                    a.Announcement.Status,
+                    a.Announcement.AuthorId,
+                    a.Announcement.Author.Nickname,
+                    new NamedRef(a.Announcement.Game.Id, a.Announcement.Game.Name),
+                    new NamedRef(a.Announcement.GameMode.Id, a.Announcement.GameMode.Name))))
+            .ToListAsync(ct);
 
-            return rows;
-        }
+        return rows;
+    }
 
-        public async Task<IReadOnlyList<IncomingApplicationItem>> ListIncomingAsync(
-            long authorId, CancellationToken ct)
-        {
-            // ── Заявки на объявления этого автора, в любых статусах, новые первыми ──
-            var rows = await db.Applications
-                .AsNoTracking()
-                .Where(a => a.Announcement.AuthorId == authorId)
-                .OrderByDescending(a => a.CreatedAt)
-                .ThenByDescending(a => a.Id)
-                .Select(a => new
-                {
-                    a.Id,
-                    a.Status,
-                    a.CreatedAt,
-                    a.UpdatedAt,
-                    AnnouncementId = a.Announcement.Id,
-                    AnnouncementTitle = a.Announcement.Title,
-                    AnnouncementStatus = a.Announcement.Status,
-                    ApplicantId = a.Applicant.Id,
-                    ApplicantNickname = a.Applicant.Nickname,
-                    ApplicantBirthDate = a.Applicant.BirthDate
-                })
-                .ToListAsync(ct);
+    public async Task<IReadOnlyList<IncomingApplicationItem>> ListIncomingAsync(
+        long authorId, CancellationToken ct)
+    {
+        // ── Заявки на объявления этого автора, в любых статусах, новые первыми ──
+        var rows = await db.Applications
+            .AsNoTracking()
+            .Where(a => a.Announcement.AuthorId == authorId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.Status,
+                a.CreatedAt,
+                a.UpdatedAt,
+                AnnouncementId = a.Announcement.Id,
+                AnnouncementTitle = a.Announcement.Title,
+                AnnouncementStatus = a.Announcement.Status,
+                ApplicantId = a.Applicant.Id,
+                ApplicantNickname = a.Applicant.Nickname,
+                ApplicantBirthDate = a.Applicant.BirthDate
+            })
+            .ToListAsync(ct);
 
-            // ── Возраст считаем в C#, превращаем строки в DTO ──
-            var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
-            return rows.Select(r => new IncomingApplicationItem(
-                r.Id,
-                r.Status,
-                r.CreatedAt,
-                r.UpdatedAt,
-                new ApplicantBrief(
-                    r.ApplicantId,
-                    r.ApplicantNickname,
-                    AgeCalculator.FullYears(r.ApplicantBirthDate, today)),
-                new IncomingAnnouncementBrief(
-                    r.AnnouncementId,
-                    r.AnnouncementTitle,
-                    r.AnnouncementStatus))).ToList();
-        }
+        // ── Возраст считаем в C#, превращаем строки в DTO ──
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        return rows.Select(r => new IncomingApplicationItem(
+            r.Id,
+            r.Status,
+            r.CreatedAt,
+            r.UpdatedAt,
+            new ApplicantBrief(
+                r.ApplicantId,
+                r.ApplicantNickname,
+                AgeCalculator.FullYears(r.ApplicantBirthDate, today)),
+            new IncomingAnnouncementBrief(
+                r.AnnouncementId,
+                r.AnnouncementTitle,
+                r.AnnouncementStatus))).ToList();
+    }
+
+    public async Task<IReadOnlyList<IncomingApplicationItem>> ListForAnnouncementAsync(
+        long announcementId, long currentUserId, CancellationToken ct)
+    {
+        // ── 1. Объявление существует? Берём только id автора ──
+        var authorId = await db.Announcements
+            .AsNoTracking()
+            .Where(a => a.Id == announcementId)
+            .Select(a => (long?)a.AuthorId)
+            .SingleOrDefaultAsync(ct);
+        if (authorId is null)
+            throw new NotFoundException("not_found", "Объявление не найдено");
+
+        // ── 2. Смотреть заявки может только автор ──
+        if (authorId != currentUserId)
+            throw new ForbiddenException("forbidden", "Просматривать заявки может только автор объявления");
+
+        // ── 3. Заявки на это объявление, в любых статусах, новые первыми ──
+        var rows = await db.Applications
+            .AsNoTracking()
+            .Where(a => a.AnnouncementId == announcementId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.Status,
+                a.CreatedAt,
+                a.UpdatedAt,
+                AnnouncementId = a.Announcement.Id,
+                AnnouncementTitle = a.Announcement.Title,
+                AnnouncementStatus = a.Announcement.Status,
+                ApplicantId = a.Applicant.Id,
+                ApplicantNickname = a.Applicant.Nickname,
+                ApplicantBirthDate = a.Applicant.BirthDate
+            })
+            .ToListAsync(ct);
+
+        // ── 4. Возраст считаем в C#, превращаем строки в DTO ──
+        var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        return rows.Select(r => new IncomingApplicationItem(
+            r.Id,
+            r.Status,
+            r.CreatedAt,
+            r.UpdatedAt,
+            new ApplicantBrief(
+                r.ApplicantId,
+                r.ApplicantNickname,
+                AgeCalculator.FullYears(r.ApplicantBirthDate, today)),
+            new IncomingAnnouncementBrief(
+                r.AnnouncementId,
+                r.AnnouncementTitle,
+                r.AnnouncementStatus))).ToList();
+    }
 }
